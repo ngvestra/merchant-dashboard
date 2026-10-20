@@ -1,1 +1,8 @@
 node_modules
+.next
+out
+*.tar.gz
+.env
+.env.*
+!.env.example
+.vercel
