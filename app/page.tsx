@@ -94,10 +94,12 @@ function Login({ ok }: { ok: (s: Session) => void }) {
         onSubmit={go}
         className="w-full max-w-md rounded-lg border border-[#e2e8e0] bg-white p-7 shadow-sm"
       >
-        <div className="mb-8 flex gap-3">
-          <b className="grid h-10 w-10 place-items-center rounded-md bg-[#174731] text-[#d7b362]">
-            V
-          </b>
+        <div className="mb-8 flex items-center gap-3">
+          <img
+            src="https://res.cloudinary.com/dv5awigtg/image/upload/e_trim,c_fill,g_center,w_160,h_160/v1792498635/black_on_white_vertical_f1kolh.png"
+            alt="Vestra"
+            className="h-10 w-10 rounded-md bg-white object-cover"
+          />
           <div>
             <b>Vestra</b>
             <p className="text-[10px] tracking-widest text-slate-500">
@@ -244,10 +246,12 @@ function Dashboard({ s, out }: { s: Session; out: () => void }) {
           (mobile ? "translate-x-0" : "-translate-x-full lg:translate-x-0")
         }
       >
-        <div className="mb-8 flex gap-3">
-          <b className="grid h-9 w-9 place-items-center rounded-md bg-[#c8a75a] text-[#123b2a]">
-            V
-          </b>
+        <div className="mb-8 flex items-center gap-3">
+          <img
+            src="https://res.cloudinary.com/dv5awigtg/image/upload/e_trim,c_fill,g_center,w_240,h_240/v1792499633/white_transparent_icon_1_n3jrdy.png"
+            alt="Vestra"
+            className="h-8 w-8 object-cover"
+          />
           <div>
             <b className="text-white">Vestra</b>
             <p className="text-[10px] tracking-widest">MERCHANT PORTAL</p>
