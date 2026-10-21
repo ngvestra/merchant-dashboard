@@ -17,7 +17,7 @@ import {
   Plus,
   Search,
 } from "lucide-react";
-import { portalApi, PortalError, Session } from "@/lib/portal-api";
+import { machineBases, portalApi, PortalError, Session, Environment } from "@/lib/portal-api";
 const nav = [
   ["Overview", LayoutDashboard],
   ["Customers", Users],
@@ -221,25 +221,35 @@ function Dashboard({ s, out }: { s: Session; out: () => void }) {
     [mobile, setMobile] = useState(false),
     [data, setData] = useState<any>(null),
     [err, setErr] = useState(""),
-    [loading, setLoading] = useState(true);
+    [loading, setLoading] = useState(true),
+    [environment, setEnvironment] = useState<Environment>("LIVE");
+  useEffect(() => {
+    const saved = sessionStorage.getItem("vestra_portal_environment");
+    if (saved === "SANDBOX" || saved === "LIVE") setEnvironment(saved);
+  }, []);
+  const chooseEnvironment = (next: Environment) => {
+    setData(null);
+    setEnvironment(next);
+    sessionStorage.setItem("vestra_portal_environment", next);
+  };
   const load = async () => {
     setLoading(true);
     setErr("");
     try {
       if (tab === "Overview") {
         const [customers, transactions, products] = await Promise.all([
-          portalApi.customerMetrics(s.token),
-          portalApi.transactionMetrics(s.token),
-          portalApi.productMetrics(s.token),
+          portalApi.customerMetrics(s.token, environment),
+          portalApi.transactionMetrics(s.token, environment),
+          portalApi.productMetrics(s.token, environment),
         ]);
         setData({ customers, transactions, products });
         return;
       }
       if (tab === "Analytics") {
         const [customers, transactions, products] = await Promise.all([
-          portalApi.customerMetrics(s.token),
-          portalApi.transactionMetrics(s.token),
-          portalApi.productMetrics(s.token),
+          portalApi.customerMetrics(s.token, environment),
+          portalApi.transactionMetrics(s.token, environment),
+          portalApi.productMetrics(s.token, environment),
         ]);
         setData({ customers, transactions, products });
         return;
@@ -249,9 +259,9 @@ function Dashboard({ s, out }: { s: Session; out: () => void }) {
             : tab === "KYC"
               ? portalApi.customers
               : tab === "Wallet Funding"
-                ? (token: string) => portalApi.transactions(token, "&type=DEPOSIT")
+                ? (token: string, env: Environment) => portalApi.transactions(token, env, "&type=DEPOSIT")
                 : tab === "Purchases"
-                  ? (token: string) => portalApi.transactions(token, "&type=PURCHASE")
+                  ? (token: string, env: Environment) => portalApi.transactions(token, env, "&type=PURCHASE")
             : tab === "Transactions"
               ? portalApi.transactions
               : tab === "Product Catalogue"
@@ -259,13 +269,12 @@ function Dashboard({ s, out }: { s: Session; out: () => void }) {
                 : tab === "API Keys"
                   ? portalApi.keys
                   : null;
-      setData(fn ? await fn(s.token) : null);
+      setData(fn ? await fn(s.token, environment) : null);
     } catch (e) {
       const x = e as PortalError;
       if (
-        x.status === 401 ||
-        x.status === 403 ||
-        x.code === "MERCHANT_ACCOUNT_SUSPENDED"
+        x.code === "MERCHANT_ACCOUNT_SUSPENDED" ||
+        (environment === "LIVE" && (x.status === 401 || x.status === 403))
       )
         out();
       else setErr(x.message);
@@ -275,7 +284,7 @@ function Dashboard({ s, out }: { s: Session; out: () => void }) {
   };
   useEffect(() => {
     load();
-  }, [tab]);
+  }, [tab, environment]);
   return (
     <main className="min-h-screen lg:flex">
       <aside
@@ -334,19 +343,31 @@ function Dashboard({ s, out }: { s: Session; out: () => void }) {
             <div>
               <b>{tab}</b>
               <p className="text-xs text-slate-500">
-                {s.merchant.name} · {s.merchant.code}
+                {s.merchant.name} · {s.merchant.code} <EnvironmentBadge environment={environment} />
               </p>
             </div>
           </div>
+          <div className="flex items-center gap-3">
+            <EnvironmentSwitch environment={environment} onChange={chooseEnvironment} />
           <div className="grid h-9 w-9 place-items-center rounded-full bg-[#e8efe9] text-sm text-[#1d5136]">
             {s.merchant.name.slice(0, 2)}
+          </div>
           </div>
         </header>
         <div className="p-5 lg:p-8">
           {loading ? (
             <State t="Loading live dashboard data…" />
           ) : err ? (
-            <State t={err} retry={load} />
+            <State
+              t={err}
+              retry={load}
+              signOut={
+                environment === "SANDBOX" &&
+                /sign out|sign in|token|authentication/i.test(err)
+                  ? out
+                  : undefined
+              }
+            />
           ) : (
             <Page
               tab={tab}
@@ -354,6 +375,8 @@ function Dashboard({ s, out }: { s: Session; out: () => void }) {
               token={s.token}
               organisation={s.merchant.name}
               reload={load}
+              environment={environment}
+              onEnvironmentChange={chooseEnvironment}
             />
           )}
         </div>
@@ -361,7 +384,15 @@ function Dashboard({ s, out }: { s: Session; out: () => void }) {
     </main>
   );
 }
-function State({ t, retry }: { t: string; retry?: () => void }) {
+function State({
+  t,
+  retry,
+  signOut,
+}: {
+  t: string;
+  retry?: () => void;
+  signOut?: () => void;
+}) {
   return (
     <div className="grid min-h-[300px] place-items-center text-center">
       <div>
@@ -372,9 +403,23 @@ function State({ t, retry }: { t: string; retry?: () => void }) {
             Try again
           </button>
         )}
+        {signOut && (
+          <button className="btn ml-2 mt-4 bg-[#1c4f35] text-white" onClick={signOut}>
+            Sign out and sign in
+          </button>
+        )}
       </div>
     </div>
   );
+}
+function EnvironmentBadge({ environment }: { environment: Environment }) {
+  return <span className={`ml-1 inline-flex rounded-full px-1.5 py-0.5 text-[10px] font-semibold ${environment === "LIVE" ? "bg-emerald-50 text-emerald-700" : "bg-amber-100 text-amber-800"}`}>{environment === "LIVE" ? "Live" : "Sandbox"}</span>;
+}
+function EnvironmentSwitch({ environment, onChange }: { environment: Environment; onChange: (environment: Environment) => void }) {
+  return <div className="flex rounded-md border border-[#dce5dd] bg-[#f7f9f6] p-1 text-xs font-semibold"><button onClick={() => onChange("LIVE")} className={`rounded px-3 py-1.5 ${environment === "LIVE" ? "bg-white text-[#1c4f35] shadow-sm" : "text-slate-500"}`}>Live</button><button onClick={() => onChange("SANDBOX")} className={`rounded px-3 py-1.5 ${environment === "SANDBOX" ? "bg-amber-100 text-amber-900 shadow-sm" : "text-slate-500"}`}>Sandbox</button></div>;
+}
+function SandboxNotice() {
+  return <div className="mb-6 rounded-md border border-amber-200 bg-amber-50 p-4 text-xs leading-5 text-amber-950"><b>Sandbox environment.</b> This is separate, dynamic test data—never real money. Test funding and purchases begin as PENDING, then settle automatically; purchase receipts move from PROCESSING to ISSUED. Use any valid 11-digit test identity number for approval; <code>00000000000</code> returns a rejected result.</div>;
 }
 function Page({
   tab,
@@ -382,12 +427,16 @@ function Page({
   token,
   organisation,
   reload,
+  environment,
+  onEnvironmentChange,
 }: {
   tab: string;
   data: any;
   token: string;
   organisation: string;
   reload: () => void;
+  environment: Environment;
+  onEnvironmentChange: (environment: Environment) => void;
 }) {
   if (tab === "API Keys")
     return (
@@ -396,14 +445,16 @@ function Page({
         token={token}
         organisation={organisation}
         reload={reload}
+        environment={environment}
       />
     );
-  if (tab === "Developer Docs") return <DeveloperDocs embedded />;
+  if (tab === "Developer Docs") return <DeveloperDocs embedded environment={environment} onEnvironmentChange={onEnvironmentChange} />;
   if (tab === "Customers" || tab === "Transactions") return <RecordsTable tab={tab} data={data} />;
   if (tab === "KYC") return <KycPage data={data} />;
   if (tab === "Wallet Funding" || tab === "Purchases")
     return <TransactionActivityPage tab={tab} data={data} />;
   if (tab === "Analytics") return <AnalyticsPage data={data} />;
+  const sandboxNotice = environment === "SANDBOX" ? <SandboxNotice /> : null;
   if (tab === "Overview") {
     const customers = data?.customers || {};
     const transactions = data?.transactions || {};
@@ -420,6 +471,7 @@ function Page({
     ];
     return (
       <>
+        {sandboxNotice}
         <h1 className="text-2xl font-semibold">Overview</h1>
         <p className="mt-1 text-sm text-slate-500">
           Live operational data for your organisation.
@@ -479,6 +531,7 @@ function Page({
   const rows = Array.isArray(data) ? data : data?.items || data?.data || [];
   return (
     <>
+      {sandboxNotice}
       <h1 className="text-2xl font-semibold">{tab}</h1>
       <p className="mt-1 text-sm text-slate-500">
         Live data for your organisation only.
@@ -705,6 +758,7 @@ const DOC_ENDPOINTS = [
   ["metrics-customers", "GET", "/metrics/customers", "Get Customer Metrics", "Returns customer total and KYC status counts."],
   ["metrics-transactions", "GET", "/metrics/transactions", "Get Transaction Metrics", "Returns transaction counts, status totals and volume by currency."],
   ["metrics-products", "GET", "/metrics/products", "Get Product Metrics", "Returns product purchase count, value and status."],
+  ["metrics-overview", "GET", "/metrics/overview", "Get Overview Metrics", "A convenience summary endpoint; use split metrics endpoints for dashboard reporting."],
 ] as const;
 type DocDetail = {
   path: string;
@@ -715,7 +769,7 @@ type DocDetail = {
   errors: string[];
 };
 const DOC_DETAILS: Record<string, DocDetail> = {
-  "create-customer": { path: "/customers", request: { email: "customer@example.com", phone: "08012345678", firstName: "Ada", lastName: "Okafor", dob: "1990-01-15", sex: "female", homeAddress: "1 Marina Road", city: "Lagos", state: "Lagos", country: "Nigeria" }, response: { success: true, message: "Merchant customer created successfully", data: { customerId: "vmc_a1b2c3d4e5f6", kycStatus: "NOT_STARTED" } }, note: "Returns 201 Created. If the same customer already exists, Vestra returns 200 with “Merchant customer already exists”. Store and use only customerId (vmc_...).", errors: ["400 invalid customer details", "401 missing or invalid API key", "409 duplicate request", "500 temporary server error"] },
+  "create-customer": { path: "/customers", request: { email: "customer@example.com", phone: "08000000000", firstName: "Ada", lastName: "Okafor", dob: "1995-05-15", sex: "female", homeAddress: "12 Example Street", city: "Lagos", state: "Lagos", country: "Nigeria" }, response: { success: true, message: "Merchant customer created successfully", data: { customerId: "vmc_example", email: "customer@example.com", phone: "08000000000", firstName: "Ada", lastName: "Okafor", dob: "1995-05-15", sex: "female", homeAddress: "12 Example Street", city: "Lagos", state: "Lagos", country: "Nigeria", status: "ACTIVE", kycStatus: "NOT_STARTED", createdAt: "2026-10-21T12:00:00.000Z", updatedAt: "2026-10-21T12:00:00.000Z" } }, note: "Returns 201 Created. If the same customer already exists, Vestra returns 200 with “Merchant customer already exists”. Store and use only customerId (vmc_...).", errors: ["400 invalid customer details", "401 missing or invalid API key", "409 duplicate request", "500 temporary server error"] },
   "get-customer": { path: "/customers/vmc_a1b2c3d4e5f6", params: "Path: customerId — the public vmc_ customer ID you stored when creating the customer.", response: { success: true, message: "Merchant customer returned", data: { customerId: "vmc_a1b2c3d4e5f6", email: "customer@example.com", phone: "08012345678", firstName: "Ada", lastName: "Okafor", kycStatus: "APPROVED", status: "ACTIVE", createdAt: "2026-10-21T07:00:00.000Z", updatedAt: "2026-10-21T07:00:00.000Z" } }, errors: ["401 missing or invalid API key", "404 customer not found", "500 temporary server error"] },
   "verify-customer-bvn": { path: "/customers/vmc_a1b2c3d4e5f6/kyc/bvn", request: { bvn: "12345678901" }, params: "Path: customerId — the public vmc_ customer ID.", response: { success: true, message: "Customer KYC processed", data: { kycStatus: "APPROVED", verification: { status: "BVN_NAME_MATCHED", message: "Identity names match the Vestra profile.", verifiedAt: "2026-10-21T07:00:00.000Z", name: "Ada Ngozi Okafor" } } }, note: "KYC statuses are NOT_STARTED, PENDING, APPROVED, and REJECTED. Submit identity data only from your secure backend and never log it.", errors: ["400 invalid KYC request", "401 missing or invalid API key", "404 customer not found", "500 temporary server error"] },
   products: { path: "/products", response: { success: true, message: "Merchant products returned", data: [{ id: "67abc123def4567890abcd12", name: "Dangote Petroleum Refinery IPO", symbol: "DPRI", currency: "NGN", minimumUnits: 10 }] }, note: "Use id as productId when creating a purchase. Product availability can change, so fetch this list before purchase flows.", errors: ["401 missing or invalid API key", "500 temporary server error"] },
@@ -728,6 +782,7 @@ const DOC_DETAILS: Record<string, DocDetail> = {
   "metrics-customers": { path: "/metrics/customers", response: { success: true, message: "Customer metrics returned", data: { total: 1, kyc: { APPROVED: 1 } } }, errors: ["401 missing or invalid API key", "500 temporary server error"] },
   "metrics-transactions": { path: "/metrics/transactions", response: { success: true, message: "Transaction metrics returned", data: { totalTransactions: 3, totalVolume: { NGN: 10650 }, transactions: [{ type: "DEPOSIT", status: "SUCCESS", currency: "NGN", count: 2, amount: 5400 }, { type: "PURCHASE", status: "SUCCESS", currency: "NGN", count: 1, amount: 5250 }] } }, errors: ["401 missing or invalid API key", "500 temporary server error"] },
   "metrics-products": { path: "/metrics/products", response: { success: true, message: "Product metrics returned", data: [{ productId: "67abc123def4567890abcd12", status: "SUCCESS", count: 1, amount: 5250 }] }, errors: ["401 missing or invalid API key", "500 temporary server error"] },
+  "metrics-overview": { path: "/metrics/overview", response: { success: true, message: "Merchant overview returned", data: { customers: { total: 1, kyc: { APPROVED: 1 } }, transactions: { totalTransactions: 3, totalVolume: { NGN: 10650 } } } }, note: "This is a convenience endpoint. Use customer, transaction, and product metric endpoints separately for the main dashboard and reporting.", errors: ["401 missing or invalid API key", "500 temporary server error"] },
 };
 const json = (value: unknown) => JSON.stringify(value, null, 2);
 function endpointCode(method: string, detail: DocDetail, language: "curl" | "node") {
@@ -739,10 +794,24 @@ function endpointCode(method: string, detail: DocDetail, language: "curl" | "nod
   }
   return `const response = await request("${detail.path}", {\n  method: "${method}",${key ? `\n  headers: { "Idempotency-Key": "${key}" },` : ""}${body ? `\n  body: JSON.stringify(${body}),` : ""}\n});\n\nconst result = await response.json();\nif (!response.ok) throw new Error(result.message);\nconsole.log(result);`;
 }
-export function DeveloperDocs({ embedded = false }: { embedded?: boolean }) {
+export function DeveloperDocs({ embedded = false, environment: controlledEnvironment, onEnvironmentChange }: { embedded?: boolean; environment?: Environment; onEnvironmentChange?: (environment: Environment) => void }) {
   const [query, setQuery] = useState("");
   const [language, setLanguage] = useState<"curl" | "node">("curl");
   const [copied, setCopied] = useState("");
+  const [localEnvironment, setLocalEnvironment] = useState<Environment>("LIVE");
+  const environment = controlledEnvironment || localEnvironment;
+  useEffect(() => {
+    if (!controlledEnvironment) {
+      const saved = sessionStorage.getItem("vestra_portal_environment");
+      if (saved === "LIVE" || saved === "SANDBOX") setLocalEnvironment(saved);
+    }
+  }, [controlledEnvironment]);
+  const setEnvironment = (next: Environment) => {
+    sessionStorage.setItem("vestra_portal_environment", next);
+    if (onEnvironmentChange) onEnvironmentChange(next);
+    else setLocalEnvironment(next);
+  };
+  const docBase = machineBases[environment];
   const copy = async (text: string, id: string) => {
     await navigator.clipboard.writeText(text);
     setCopied(id);
@@ -792,12 +861,17 @@ export function DeveloperDocs({ embedded = false }: { embedded?: boolean }) {
             </a>
           )}
         </div>
+        <div className="mt-5 flex flex-wrap items-center gap-3">
+          <EnvironmentSwitch environment={environment} onChange={setEnvironment} />
+          <EnvironmentBadge environment={environment} />
+          {environment === "SANDBOX" && <span className="text-xs text-amber-800">Sandbox is isolated test data; no real money is used.</span>}
+        </div>
         <div className="mt-6 flex flex-wrap items-center gap-3 rounded-md border border-[#d9e6db] bg-[#f1f8f2] p-3">
           <span className="text-xs font-semibold text-[#24563a]">Base URL</span>
           <code className="min-w-0 flex-1 break-all text-xs text-[#173f2b]">
-            {DOC_BASE}
+            {docBase}
           </code>
-          <button className="btn" onClick={() => copy(DOC_BASE, "base")}>
+          <button className="btn" onClick={() => copy(docBase, "base")}>
             {copied === "base" ? <Check size={14} /> : <Copy size={14} />}{" "}
             {copied === "base" ? "Copied" : "Copy"}
           </button>
@@ -871,7 +945,7 @@ export function DeveloperDocs({ embedded = false }: { embedded?: boolean }) {
             <p className="mt-3 text-sm text-slate-600">
               Every request requires{" "}
               <code className="rounded bg-slate-100 px-1">
-                x-api-key: vstr_live_your_merchant_api_key
+                x-api-key: vstr_{environment === "LIVE" ? "live" : "test"}_your_merchant_api_key
               </code>
               . Create it under API Keys in this portal; treat the visible raw
               key as a secret.
@@ -881,8 +955,8 @@ export function DeveloperDocs({ embedded = false }: { embedded?: boolean }) {
               setLanguage={setLanguage}
               code={
                 language === "curl"
-                  ? `curl --request GET \\\n  '${DOC_BASE}/products' \\\n  --header 'x-api-key: vstr_live_your_merchant_api_key'`
-                  : `const response = await fetch('${DOC_BASE}/products', {\n  headers: { 'x-api-key': process.env.VESTRA_MERCHANT_API_KEY },\n});\nconst result = await response.json();`
+                  ? `curl --request GET \\\n  '${docBase}/products' \\\n  --header 'x-api-key: vstr_${environment === "LIVE" ? "live" : "test"}_your_api_key'`
+                  : `const response = await fetch('${docBase}/products', {\n  headers: { 'x-api-key': process.env.VESTRA_MERCHANT_API_KEY },\n});\nconst result = await response.json();`
               }
               id="auth"
               copy={copy}
@@ -916,7 +990,7 @@ export function DeveloperDocs({ embedded = false }: { embedded?: boolean }) {
           <section id="quick-start" className="border-t border-[#e8ece7] pt-9">
             <h2 className="text-2xl font-semibold">Shared setup</h2>
             <p className="mt-3 text-sm text-slate-600">Set these values once in your secure merchant backend, then use the examples below.</p>
-            <CodeTabs language={language} setLanguage={setLanguage} code={language === "curl" ? `BASE_URL="${DOC_BASE}"\nAPI_KEY="vstr_live_your_api_key"` : `const baseUrl = "${DOC_BASE}";\nconst apiKey = process.env.VESTRA_API_KEY;\n\nconst request = (path, options = {}) =>\n  fetch(\`${"${baseUrl}"}\${path}\`, {\n    ...options,\n    headers: {\n      "x-api-key": apiKey,\n      "Content-Type": "application/json",\n      ...(options.headers ?? {}),\n    },\n  });`} id="setup" copy={copy} copied={copied} />
+            <CodeTabs language={language} setLanguage={setLanguage} code={language === "curl" ? `BASE_URL="${docBase}"\nAPI_KEY="vstr_${environment === "LIVE" ? "live" : "test"}_your_api_key"` : `const baseUrl = "${docBase}";\nconst apiKey = process.env.VESTRA_API_KEY;\n\nconst request = (path, options = {}) =>\n  fetch(\`${"${baseUrl}"}\${path}\`, {\n    ...options,\n    headers: {\n      "x-api-key": apiKey,\n      "Content-Type": "application/json",\n      ...(options.headers ?? {}),\n    },\n  });`} id="setup" copy={copy} copied={copied} />
           </section>
           {shown.map(([id, method, path, title, description]) => {
             const detail = DOC_DETAILS[id];
@@ -935,7 +1009,7 @@ export function DeveloperDocs({ embedded = false }: { embedded?: boolean }) {
                 <code className="text-sm">{path}</code>
                 <button
                   className="btn ml-auto"
-                  onClick={() => copy(`${DOC_BASE}${path}`, id)}
+                  onClick={() => copy(`${docBase}${path}`, id)}
                 >
                   {copied === id ? <Check size={14} /> : <Copy size={14} />}{" "}
                   {copied === id ? "Copied" : "Copy URL"}
@@ -1164,14 +1238,17 @@ function Keys({
   token,
   organisation,
   reload,
+  environment,
 }: {
   data: any;
   token: string;
   organisation: string;
   reload: () => void;
+  environment: Environment;
 }) {
   const keys = Array.isArray(data) ? data : data?.items || [];
-  const [name, setName] = useState(`${organisation} API key`),
+  const activeKey = keys.find((key: any) => (key.status || "ACTIVE") === "ACTIVE");
+  const [name, setName] = useState(`${organisation} ${environment === "SANDBOX" ? "Sandbox development" : "Live"} key`),
     [raw, setRaw] = useState(""),
     [error, setError] = useState(""),
     [copiedKey, setCopiedKey] = useState("");
@@ -1188,6 +1265,8 @@ function Keys({
       <p className="mt-1 text-sm text-slate-500">
         Your backend only — never browser code.
       </p>
+      <div className={`mt-4 flex flex-wrap items-center gap-2 rounded-md border p-3 text-xs ${environment === "LIVE" ? "border-emerald-200 bg-emerald-50 text-emerald-900" : "border-amber-200 bg-amber-50 text-amber-900"}`}><EnvironmentBadge environment={environment} /><span>Keys and data are isolated per environment.</span><code className="ml-auto break-all">{machineBases[environment]}</code></div>
+      {activeKey && <p className="mt-3 text-xs text-slate-500">One active {environment.toLowerCase()} key already exists. Revoke it before creating a replacement.</p>}
       <div className="mt-5 flex flex-wrap gap-2">
         <input
           aria-label="API key name"
@@ -1197,12 +1276,13 @@ function Keys({
         />
         <button
           className="btn bg-[#1c4f35] text-white"
+          disabled={Boolean(activeKey)}
           onClick={async () => {
             try {
               setError("");
-              const r = await portalApi.createKey(token, name);
+              const r = await portalApi.createKey(token, environment, name);
               setRaw(r.key || r.rawKey || r.apiKey || r.value || "");
-              setName(`${organisation} API key`);
+              setName(`${organisation} ${environment === "SANDBOX" ? "Sandbox development" : "Live"} key`);
               reload();
             } catch (e) {
               setError(
@@ -1245,7 +1325,6 @@ function Keys({
               <th>Name</th>
               <th>Key</th>
               <th>Created</th>
-              <th>Last used</th>
               <th />
             </tr>
           </thead>
@@ -1267,7 +1346,6 @@ function Keys({
                     {value ? mask(value) : "—"}
                   </td>
                   <td>{k.createdAt || "—"}</td>
-                  <td>{k.lastUsedAt || "Never"}</td>
                   <td>
                     {value && (
                       <button
