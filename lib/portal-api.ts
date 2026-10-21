@@ -58,18 +58,29 @@ export const portalApi = {
       method: "POST",
       body: JSON.stringify({ email }),
     }),
-  reset: (email: string, otp: string, password: string) =>
+  reset: (
+    email: string,
+    otp: string,
+    password: string,
+    confirmPassword: string,
+  ) =>
     request("/merchant/auth/reset-password", {
       method: "POST",
-      body: JSON.stringify({ email, otp, password }),
+      body: JSON.stringify({ email, otp, password, confirmPassword }),
     }),
   me: (t: string) => request<Merchant>("/merchant/dashboard/me", {}, t),
   overview: (t: string) =>
     request<any>("/merchant/dashboard/metrics/overview", {}, t),
+  customerMetrics: (t: string) =>
+    request<any>("/merchant/dashboard/metrics/customers", {}, t),
+  transactionMetrics: (t: string) =>
+    request<any>("/merchant/dashboard/metrics/transactions", {}, t),
+  productMetrics: (t: string) =>
+    request<any>("/merchant/dashboard/metrics/products", {}, t),
   customers: (t: string) =>
     request<any>("/merchant/dashboard/customers?page=1&limit=25", {}, t),
-  transactions: (t: string) =>
-    request<any>("/merchant/dashboard/transactions?page=1&limit=25", {}, t),
+  transactions: (t: string, filters = "") =>
+    request<any>(`/merchant/dashboard/transactions?page=1&limit=25${filters}`, {}, t),
   products: (t: string) => request<any>("/merchant/dashboard/products", {}, t),
   keys: (t: string) => request<any>("/merchant/dashboard/api-keys", {}, t),
   createKey: (t: string, name: string) =>
