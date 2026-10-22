@@ -14,6 +14,8 @@ export type Merchant = {
   code: string;
   email: string;
 };
+
+
 export type Session = { token: string; merchant: Merchant };
 export class PortalError extends Error {
   constructor(
@@ -24,6 +26,9 @@ export class PortalError extends Error {
     super(message);
   }
 }
+
+
+
 async function request<T>(
   path: string,
   init: RequestInit = {},
