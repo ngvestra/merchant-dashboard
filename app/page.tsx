@@ -734,6 +734,13 @@ const DOC_ENDPOINTS = [
   ],
   ["wallet-balance", "GET", "/customers/{customerId}/wallet/balance", "Get Customer Wallet Balance", "Returns balances by currency for the public vmc customer ID."],
   [
+    "purchase-quote",
+    "POST",
+    "/customers/{customerId}/products/{productId}/quote",
+    "Get Purchase Quote",
+    "Returns the current fee-inclusive wallet amount for the requested units. It does not fund a wallet, reserve funds, or submit a purchase order.",
+  ],
+  [
     "place-investment-order",
     "POST",
     "/customers/{customerId}/products/{productId}/purchases",
@@ -766,6 +773,7 @@ type DocDetail = {
   response: Record<string, unknown>;
   params?: string;
   note?: string;
+  fields?: [string, string][];
   errors: string[];
 };
 const DOC_DETAILS: Record<string, DocDetail> = {
@@ -775,7 +783,8 @@ const DOC_DETAILS: Record<string, DocDetail> = {
   products: { path: "/products", response: { success: true, message: "Merchant products returned", data: [{ id: "67abc123def4567890abcd12", name: "Dangote Petroleum Refinery IPO", symbol: "DPRI", currency: "NGN", minimumUnits: 10 }] }, note: "Use id as productId when creating a purchase. Product availability can change, so fetch this list before purchase flows.", errors: ["401 missing or invalid API key", "500 temporary server error"] },
   "fund-customer-wallet": { path: "/customers/vmc_a1b2c3d4e5f6/wallet/fund", request: { amount: 1000, currency: "NGN", merchantReference: "ACME-DEP-001" }, params: "Path: customerId — the public vmc_ customer ID. Header: Idempotency-Key: unique-merchant-funding-reference.", response: { success: true, message: "Wallet funding initiated", data: { replayed: false, transaction: { id: "transaction-id", customerId: "vmc_a1b2c3d4e5f6", amount: 1000, currency: "NGN", type: "DEPOSIT", status: "PENDING", reference: "VESTRA_MERCHANT_FUND_...", merchantReference: "ACME-DEP-001", productId: null, receiptStatus: null }, funding: { paymentMethod: "bank_transfer", amountToPay: 1015, totalCharge: 1015, virtualAccount: { bankName: "Bank Name", accountNumber: "0123456789", amount: "1015.00", expiresAt: "2026-10-21 12:00:00" } } } }, note: "Use one unique Idempotency-Key for each funding operation. The customer must transfer the exact amountToPay, not just the requested amount.", errors: ["400 invalid amount or currency", "401 missing or invalid API key", "403 customer KYC is required", "404 customer not found", "409 idempotency key conflict", "500 temporary server error"] },
   "wallet-balance": { path: "/customers/vmc_a1b2c3d4e5f6/wallet/balance", params: "Path: customerId — the public vmc_ customer ID.", response: { success: true, message: "Customer wallet balance returned", data: { customerId: "vmc_a1b2c3d4e5f6", balances: [{ currency: "NGN", amount: 5400 }] } }, errors: ["401 missing or invalid API key", "404 customer not found", "500 temporary server error"] },
-  "place-investment-order": { path: "/customers/vmc_a1b2c3d4e5f6/products/67abc123def4567890abcd12/purchases", request: { units: 10, merchantReference: "ACME-BUY-001" }, params: "Path: customerId — public vmc_ ID; productId — product id from GET /products. Header: Idempotency-Key: unique-merchant-purchase-reference.", response: { success: true, message: "Purchase order submitted", data: { replayed: false, transaction: { id: "transaction-id", customerId: "vmc_a1b2c3d4e5f6", amount: 5250, currency: "NGN", type: "PURCHASE", status: "PENDING", reference: "VESTRA_MERCHANT_BUY_...", merchantReference: "ACME-BUY-001", productId: "67abc123def4567890abcd12", receiptStatus: null } } }, note: "Use a unique Idempotency-Key for each purchase. The initial result can be PENDING; check the transaction until it reaches a terminal status.", errors: ["400 insufficient balance or invalid units", "401 missing or invalid API key", "403 customer KYC is required", "404 customer or product not found", "409 idempotency key conflict", "500 temporary server error"] },
+  "purchase-quote": { path: "/customers/vmc_abc123/products/67abc123def4567890abcd12/quote", request: { units: 10 }, params: "Path: customerId — public vmc_ ID; productId — product id from GET /products.", response: { success: true, message: "Purchase quote returned", data: { customerId: "vmc_abc123", productId: "67abc123def4567890abcd12", currency: "NGN", requestedUnits: 10, unitPrice: 525, buyFeePercent: 1, feeUnits: 0.1, totalChargedUnits: 10.1, principalAmount: 5250, feeAmount: 52.5, totalAmount: 5302.5, walletBalance: 6000, walletSufficient: true } }, note: "Quotes are informational and do not reserve a price or funds. Price and fee can change, so request a fresh quote immediately before funding or purchasing. Fund the wallet with totalAmount, not only principalAmount. The purchase request still receives units, not totalChargedUnits.", fields: [["requestedUnits", "Units the customer wants to buy."], ["unitPrice", "Current buy price per unit."], ["buyFeePercent", "Current product buy-fee percentage."], ["feeUnits", "Fee expressed in product units."], ["totalChargedUnits", "Requested units plus fee units."], ["principalAmount", "Cost of requested units before the fee."], ["feeAmount", "Fee converted to the wallet currency."], ["totalAmount", "Exact amount required in the customer wallet."], ["walletBalance", "Current available wallet balance."], ["walletSufficient", "Whether the wallet can cover totalAmount."]], errors: ["400 invalid units", "401 missing or invalid API key", "403 customer KYC is required", "404 customer or product not found", "500 temporary server error"] },
+  "place-investment-order": { path: "/customers/vmc_a1b2c3d4e5f6/products/67abc123def4567890abcd12/purchases", request: { units: 10, merchantReference: "merchant-buy-001" }, params: "Path: customerId — public vmc_ ID; productId — product id from GET /products. Header: Idempotency-Key: unique-merchant-purchase-reference.", response: { success: true, message: "Purchase order submitted", data: { replayed: false, transaction: { id: "transaction-id", customerId: "vmc_a1b2c3d4e5f6", amount: 5250, currency: "NGN", type: "PURCHASE", status: "PENDING", reference: "VESTRA_MERCHANT_BUY_...", merchantReference: "merchant-buy-001", productId: "67abc123def4567890abcd12", receiptStatus: null } } }, note: "Recommended: call Get Purchase Quote first. The wallet must contain the fee-inclusive totalAmount from that quote. Use the same units value used for the quote, not totalChargedUnits. KYC must be APPROVED and the initial transaction can be PENDING; check it until it reaches a terminal status.", errors: ["400 insufficient balance or invalid units", "401 missing or invalid API key", "403 customer KYC is required", "404 customer or product not found", "409 idempotency key conflict", "500 temporary server error"] },
   transactions: { path: "/transactions?customerId=vmc_a1b2c3d4e5f6&page=1&limit=25", params: "Optional query: customerId, status (PENDING | SUCCESS | FAILED | REVERSED), type (DEPOSIT | PURCHASE), page, limit.", response: { success: true, message: "Customer transactions returned", data: { page: 1, limit: 25, total: 3, data: [{ id: "transaction-id", customerId: "vmc_a1b2c3d4e5f6", amount: 5250, currency: "NGN", type: "PURCHASE", status: "SUCCESS", reference: "VESTRA_MERCHANT_BUY_...", merchantReference: "ACME-BUY-001", productId: "67abc123def4567890abcd12", receiptStatus: "ISSUED" }] } }, errors: ["400 invalid query parameters", "401 missing or invalid API key", "500 temporary server error"] },
   "transaction-status": { path: "/transactions/transaction-id", params: "Path: transactionId — the id returned when funding or purchasing.", response: { success: true, message: "Merchant transaction returned", data: { id: "transaction-id", customerId: "vmc_a1b2c3d4e5f6", amount: 5250, currency: "NGN", type: "PURCHASE", status: "SUCCESS", reference: "VESTRA_MERCHANT_BUY_...", merchantReference: "ACME-BUY-001", productId: "67abc123def4567890abcd12", receiptStatus: "ISSUED", createdAt: "2026-10-21T07:00:00.000Z", updatedAt: "2026-10-21T07:02:00.000Z" } }, note: "Transaction status: PENDING, SUCCESS, FAILED, REVERSED. Purchase receipt status: PROCESSING, ISSUED, FAILED.", errors: ["401 missing or invalid API key", "404 transaction not found", "500 temporary server error"] },
   investments: { path: "/customers/vmc_a1b2c3d4e5f6/investments", params: "Path: customerId — the public vmc_ customer ID.", response: { success: true, message: "Customer investments returned", data: { customerId: "vmc_a1b2c3d4e5f6", investments: [{ productId: "67abc123def4567890abcd12", name: "Dangote Petroleum Refinery IPO", symbol: "DPRI", currency: "NGN", investmentType: "Equity", investmentCategory: "Stocks", units: 10, unitPrice: 525, value: 5250 }] } }, errors: ["401 missing or invalid API key", "404 customer not found", "500 temporary server error"] },
@@ -785,12 +794,15 @@ const DOC_DETAILS: Record<string, DocDetail> = {
   "metrics-overview": { path: "/metrics/overview", response: { success: true, message: "Merchant overview returned", data: { customers: { total: 1, kyc: { APPROVED: 1 } }, transactions: { totalTransactions: 3, totalVolume: { NGN: 10650 } } } }, note: "This is a convenience endpoint. Use customer, transaction, and product metric endpoints separately for the main dashboard and reporting.", errors: ["401 missing or invalid API key", "500 temporary server error"] },
 };
 const json = (value: unknown) => JSON.stringify(value, null, 2);
-function endpointCode(method: string, detail: DocDetail, language: "curl" | "node") {
+function endpointCode(method: string, detail: DocDetail, language: "curl" | "node", baseUrl: string) {
   const body = detail.request ? json(detail.request) : undefined;
   const key = detail.path.includes("/wallet/fund") || detail.path.includes("/purchases")
     ? "unique-merchant-operation-reference" : undefined;
   if (language === "curl") {
-    return [`curl --request ${method} "$BASE_URL${detail.path}"`, "  --header \"x-api-key: $API_KEY\"", ...(key ? [`  --header "Idempotency-Key: ${key}"`] : []), ...(body ? ["  --header \"Content-Type: application/json\"", `  --data '${body}'`] : [])].join(" \\\n");
+    return [`curl --request ${method} '${baseUrl}${detail.path}'`, "  --header 'Content-Type: application/json'", "  --header 'x-api-key: YOUR_MERCHANT_API_KEY'", ...(key ? [`  --header 'Idempotency-Key: ${key}'`] : []), ...(body ? [`  --data '${body}'`] : [])].join(" \\\n");
+  }
+  if (detail.path.endsWith("/quote")) {
+    return `const response = await fetch(\n  \`${baseUrl}/customers/\${customerId}/products/\${productId}/quote\`,\n  {\n    method: "POST",\n    headers: {\n      "Content-Type": "application/json",\n      "x-api-key": process.env.VESTRA_MERCHANT_API_KEY,\n    },\n    body: JSON.stringify({ units: 10 }),\n  },\n);\n\nconst result = await response.json();\nconsole.log(result);`;
   }
   return `const response = await request("${detail.path}", {\n  method: "${method}",${key ? `\n  headers: { "Idempotency-Key": "${key}" },` : ""}${body ? `\n  body: JSON.stringify(${body}),` : ""}\n});\n\nconst result = await response.json();\nif (!response.ok) throw new Error(result.message);\nconsole.log(result);`;
 }
@@ -994,7 +1006,7 @@ export function DeveloperDocs({ embedded = false, environment: controlledEnviron
           </section>
           {shown.map(([id, method, path, title, description]) => {
             const detail = DOC_DETAILS[id];
-            const code = endpointCode(method, detail, language);
+            const code = endpointCode(method, detail, language, docBase);
             return <section id={id} key={id} className="scroll-mt-6 border-t border-[#e8ece7] pt-9">
               <div className="flex flex-wrap items-center gap-3">
                 <span
@@ -1023,6 +1035,7 @@ export function DeveloperDocs({ embedded = false, environment: controlledEnviron
               {detail.note && <div className="mt-4 rounded-md bg-blue-50 p-4 text-xs leading-5 text-blue-900">{detail.note}</div>}
               {detail.request && <DocJson title="Request body" value={json(detail.request)} id={`${id}-request`} copy={copy} copied={copied} />}
               <DocJson title="Success response" value={json(detail.response)} id={`${id}-response`} copy={copy} copied={copied} />
+              {detail.fields && <div className="mt-5 overflow-x-auto rounded-md border border-[#dfe7df]"><table><thead><tr><th>Quote field</th><th>Meaning</th></tr></thead><tbody>{detail.fields.map(([field, meaning]) => <tr key={field}><td className="font-mono text-xs">{field}</td><td>{meaning}</td></tr>)}</tbody></table></div>}
               <h3 className="mt-5 text-sm font-semibold">Common errors</h3>
               <div className="mt-2 flex flex-wrap gap-2">{detail.errors.map((error) => <span key={error} className="rounded bg-rose-50 px-2 py-1 text-xs text-rose-700">{error}</span>)}</div>
               <CodeTabs language={language} setLanguage={setLanguage} code={code} id={`${id}-example`} copy={copy} copied={copied} />
@@ -1108,13 +1121,13 @@ export function DeveloperDocs({ embedded = false, environment: controlledEnviron
                 "Create customer",
                 "Submit customer KYC",
                 "Confirm KYC is APPROVED",
-                "Fetch available products",
-                "Initiate wallet funding",
-                "Check transaction status until funding is successful",
-                "Buy a product",
-                "Check transaction status until purchase is successful",
-                "Fetch investments",
-                "Use transaction history and split metrics endpoints for reporting",
+                "Fetch configured products",
+                "Call Get Purchase Quote with the desired units",
+                "Fund the customer wallet with at least totalAmount",
+                "Confirm wallet funding or check the customer wallet balance",
+                "Submit Buy Product using the same units value used for the quote",
+                "Track the customer transaction until it is completed",
+                "Fetch investments to show the customer’s holdings",
               ].map((step, index) => (
                 <li
                   key={step}
